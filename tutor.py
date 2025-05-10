@@ -12,14 +12,14 @@ class ProblemState:
     def __init__(self, problem: str, step: int, interface_elements: list, solution_steps: list):
         self.problem = problem
         self.step = step
-        self.interface_elements = interface_elements  # Correct attribute name
+        self.interface_elements = interface_elements
         self.solution_steps = solution_steps
 
     def to_json(self):
         return {
             "problem": self.problem,
             "current_step": self.step,
-            "interface": self.interface_elements,  # JSON key remains 'interface'
+            "interface": self.interface_elements,
             "completed": self.is_done()
         }
 
@@ -49,11 +49,13 @@ class MathTutor:
     def get_state(self):
         return self.state
 
-    def evaluate_action(self, action: tuple):
-        expected = self.solution_steps[self.state.step]["sai"]
-        return (action[0] == expected[0] and
-                action[1] == expected[1] and
-                str(action[2]).strip() == str(expected[2]).strip())
+    def evaluate_action(self, element_id: str, action_type: str, value: str):
+        if self.state.step < len(self.solution_steps):
+            expected = self.solution_steps[self.state.step]["sai"]
+            return (element_id == expected[0] and
+                    action_type == expected[1] and
+                    str(value).strip() == str(expected[2]).strip())
+        return False
 
     def advance_step(self):
         self.current_step += 1
@@ -83,7 +85,7 @@ class GeminiTutor:
     def _build_prompt(self, state: ProblemState, mode: str):
         base = f"""Solve: {state.problem}
 Current Step: {state.step + 1}/{len(state.solution_steps)}
-Interface: {json.dumps(state.interface_elements, indent=2)}"""  # Fixed attribute name
+Interface: {json.dumps(state.interface_elements, indent=2)}"""
 
         if mode == "tutor":
             base += "\nGenerate the CORRECT next action as JSON [element, action, value]:"
@@ -107,9 +109,9 @@ def main():
         st.session_state.tutor = MathTutor(
             "1/2 + 1/3",
             [
-                {"sai": ("numerator", "UpdateTextField", "5"), "description": "Add numerators"},
-                {"sai": ("denominator", "UpdateTextField", "6"), "description": "Common denominator"},
-                {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+                {"sai": ("numerator", "UpdateTextField", "5"), "description": "Enter the new numerator"},
+                {"sai": ("denominator", "UpdateTextField", "6"), "description": "Enter the common denominator"},
+                {"sai": ("submit", "PressButton", ""), "description": "Submit the result"}
             ]
         )
         st.session_state.agent = GeminiTutor()
@@ -125,9 +127,9 @@ def main():
             st.session_state.tutor = MathTutor(
                 "1/2 + 1/3",
                 [
-                    {"sai": ("numerator", "UpdateTextField", "5"), "description": "Add numerators"},
-                    {"sai": ("denominator", "UpdateTextField", "6"), "description": "Common denominator"},
-                    {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+                    {"sai": ("numerator", "UpdateTextField", "5"), "description": "Enter the new numerator"},
+                    {"sai": ("denominator", "UpdateTextField", "6"), "description": "Enter the common denominator"},
+                    {"sai": ("submit", "PressButton", ""), "description": "Submit the result"}
                 ]
             )
             st.session_state.current_inputs = {"numerator": "", "denominator": ""}
@@ -139,44 +141,59 @@ def main():
 
     current_state = st.session_state.tutor.get_state()
 
-    # Display interface
     col1, col2 = st.columns(2)
     with col1:
         numerator = st.text_input("Numerator",
                                     value=st.session_state.current_inputs["numerator"],
                                     key="num_input")
+        if numerator and current_state.step == 0 and st.session_state.tutor.evaluate_action("numerator", "UpdateTextField", numerator):
+            st.session_state.current_inputs["numerator"] = numerator
+            st.session_state.tutor.advance_step()
+            st.experimental_rerun()
+
     with col2:
         denominator = st.text_input("Denominator",
                                         value=st.session_state.current_inputs["denominator"],
                                         key="den_input")
+        if denominator and current_state.step == 1 and st.session_state.tutor.evaluate_action("denominator", "UpdateTextField", denominator):
+            st.session_state.current_inputs["denominator"] = denominator
+            st.session_state.tutor.advance_step()
+            st.experimental_rerun()
 
     if st.button("Submit Answer"):
-        action = ("submit", "PressButton", "")
-        correct = st.session_state.tutor.evaluate_action(action)
-
-        if correct:
-            st.session_state.tutor.advance_step()
-            st.session_state.attempts = 0
-            st.session_state.show_hint = False
-            if st.session_state.tutor.is_complete():
-                st.success("🎉 Correct! Problem solved!")
+        if current_state.step == 2:
+            action = ("submit", "PressButton", "")
+            if st.session_state.tutor.evaluate_action(action[0], action[1], action[2]):
+                st.session_state.tutor.advance_step()
+                st.session_state.attempts = 0
+                st.session_state.show_hint = False
+                if st.session_state.tutor.is_complete():
+                    st.success("🎉 Correct! Problem solved!")
+                else:
+                    st.success("✅ Correct! Move to next step")
             else:
-                st.success("✅ Correct! Move to next step")
+                st.session_state.attempts += 1
+                if st.session_state.attempts >= 2:
+                    st.session_state.show_hint = True
+                st.error("❌ Incorrect answer. Try again.")
         else:
-            st.session_state.attempts += 1
-            if st.session_state.attempts >= 2:
-                st.session_state.show_hint = True
-            st.error("❌ Incorrect answer. Try again.")
+            st.warning("Please enter the numerator and denominator before submitting.")
 
     if mode == "Tutor" and st.button("Show Tutor Answer"):
         action = st.session_state.agent.generate_action(current_state, "tutor")
         if action:
             st.write(f"**Tutor's Answer:** {action[2]}")
             st.session_state.current_inputs[action[0]] = action[2]
+            if action[0] == "numerator" and current_state.step == 0:
+                st.session_state.tutor.advance_step()
+                st.experimental_rerun()
+            elif action[0] == "denominator" and current_state.step == 1:
+                st.session_state.tutor.advance_step()
+                st.experimental_rerun()
 
     if st.session_state.show_hint:
         demo = st.session_state.tutor.get_demonstration()
-        if demo:
+        if demo and current_state.step < len(st.session_state.tutor.solution_steps):
             st.warning(f"💡 Hint: The correct value for {demo[0]} is {demo[2]}")
 
     st.write("---")
