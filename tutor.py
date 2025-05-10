@@ -43,50 +43,70 @@ def generate_problem():
     if op == "+":
         result = frac1 + frac2
         explanation = [
-            f"Find common denominator: LCM of {b} and {d} is {result.denominator}",
+            f"To add {a}/{b} + {c}/{d}, find a common denominator: LCM of {b} and {d} is {result.denominator}.",
             f"Convert fractions: {a}/{b} = {a*(result.denominator//b)}/{result.denominator}, " +
-            f"{c}/{d} = {c*(result.denominator//d)}/{result.denominator}",
-            f"Add numerators: {a*(result.denominator//b)} + {c*(result.denominator//d)} = {result.numerator}"
+            f"{c}/{d} = {c*(result.denominator//d)}/{result.denominator}.",
+            f"Add numerators: {a*(result.denominator//b)} + {c*(result.denominator//d)} = {result.numerator}.",
+            f"Result: {result.numerator}/{result.denominator}."
         ]
         solution_steps = [
-            {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": explanation[0]},
-            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[2]},
-            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+            {
+                "sai": ("solution", "UpdateTextFields", {
+                    "numerator": str(result.numerator),
+                    "denominator": str(abs(result.denominator))
+                }),
+                "description": "Enter the numerator and denominator of the result."
+            }
         ]
     elif op == "-":
         result = frac1 - frac2
         explanation = [
-            f"Find common denominator: LCM of {b} and {d} is {result.denominator}",
+            f"To subtract {a}/{b} - {c}/{d}, find a common denominator: LCM of {b} and {d} is {result.denominator}.",
             f"Convert fractions: {a}/{b} = {a*(result.denominator//b)}/{result.denominator}, " +
-            f"{c}/{d} = {c*(result.denominator//d)}/{result.denominator}",
-            f"Subtract numerators: {a*(result.denominator//b)} - {c*(result.denominator//d)} = {result.numerator}"
+            f"{c}/{d} = {c*(result.denominator//d)}/{result.denominator}.",
+            f"Subtract numerators: {a*(result.denominator//b)} - {c*(result.denominator//d)} = {result.numerator}.",
+            f"Result: {result.numerator}/{result.denominator}."
         ]
         solution_steps = [
-            {"sai": ("denominator", "UpdateTextField", str(abs(result.denominator))), "description": explanation[0]},
-            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[2]},
-            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+            {
+                "sai": ("solution", "UpdateTextFields", {
+                    "numerator": str(result.numerator),
+                    "denominator": str(abs(result.denominator))
+                }),
+                "description": "Enter the numerator and denominator of the result."
+            }
         ]
     elif op == "*":
         result = frac1 * frac2
         explanation = [
-            f"Multiply numerators: {a} × {c} = {result.numerator}",
-            f"Multiply denominators: {b} × {d} = {result.denominator}"
+            f"To multiply {a}/{b} × {c}/{d}, multiply numerators: {a} × {c} = {result.numerator}.",
+            f"Multiply denominators: {b} × {d} = {result.denominator}.",
+            f"Result: {result.numerator}/{result.denominator}."
         ]
         solution_steps = [
-            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[0]},
-            {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": explanation[1]},
-            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+            {
+                "sai": ("solution", "UpdateTextFields", {
+                    "numerator": str(result.numerator),
+                    "denominator": str(result.denominator)
+                }),
+                "description": "Enter the numerator and denominator of the result."
+            }
         ]
     else:  # division
         result = frac1 / frac2
         explanation = [
-            f"Reciprocal of second fraction: {c}/{d} becomes {d}/{c}",
-            f"Multiply fractions: ({a}/{b}) × ({d}/{c}) = {result.numerator}/{result.denominator}"
+            f"To divide {a}/{b} ÷ {c}/{d}, take the reciprocal of the second fraction: {c}/{d} becomes {d}/{c}.",
+            f"Multiply fractions: ({a}/{b}) × ({d}/{c}) = {result.numerator}/{result.denominator}.",
+            f"Result: {result.numerator}/{result.denominator}."
         ]
         solution_steps = [
-            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[1]},
-            {"sai": ("denominator", "UpdateTextField", str(abs(result.denominator))), "description": "Enter denominator"},
-            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+            {
+                "sai": ("solution", "UpdateTextFields", {
+                    "numerator": str(result.numerator),
+                    "denominator": str(abs(result.denominator))
+                }),
+                "description": "Enter the numerator and denominator of the result."
+            }
         ]
     
     # Simplify the result if needed
@@ -113,7 +133,8 @@ class MathTutor:
         expected = self.solution_steps[self.state.step]["sai"]
         return (action[0] == expected[0] and 
                 action[1] == expected[1] and 
-                str(action[2]).strip() == str(expected[2]).strip())
+                action[2]["numerator"].strip() == expected[2]["numerator"].strip() and
+                action[2]["denominator"].strip() == expected[2]["denominator"].strip())
 
     def advance_step(self):
         self.current_step += 1
@@ -127,9 +148,16 @@ class MathTutor:
     def is_complete(self):
         return self.current_step >= len(self.solution_steps)
 
+    def reset_with_new_problem(self):
+        problem, steps, _ = generate_problem()
+        self.problem = problem
+        self.solution_steps = steps
+        self.current_step = 0
+        self.state = ProblemState(self.problem, self.current_step, self.interface, self.solution_steps)
+
 class GeminiTutor:
     def __init__(self):
-        pass  # Removed unused experience_buffer
+        pass
 
     def generate_action(self, state: ProblemState):
         prompt = self._build_prompt(state)
@@ -143,25 +171,28 @@ class GeminiTutor:
     def _build_prompt(self, state: ProblemState):
         current_step = state.solution_steps[state.step]
         return f"""Solve: {state.problem}
-Current Step: {state.step + 1} of {len(state.solution_steps)} ({current_step['description']})
-        
-Explain the current step in detail, then provide the exact action in JSON format.
-Required format: [element_id, action_type, value]
+Task: Provide the final answer as a fraction (numerator and denominator) with a detailed explanation of the solution process.
 
-Example for denominator step:
-1. Find the least common denominator...
-2. The correct denominator is 6
-["denominator", "UpdateTextField", "6"]"""
+Explain the solution in detail, then provide the exact action in JSON format.
+Required format: ["solution", "UpdateTextFields", {{"numerator": "value", "denominator": "value"}}]
+
+Example:
+1. To add 1/2 + 1/3, find the LCM of 2 and 3, which is 6.
+2. Convert fractions: 1/2 = 3/6, 1/3 = 2/6.
+3. Add numerators: 3 + 2 = 5.
+4. The result is 5/6.
+["solution", "UpdateTextFields", {{"numerator": "5", "denominator": "6"}}]"""
 
     def _parse_response(self, text: str):
         try:
             # Find the last JSON array in the response
-            json_matches = re.findall(r'\[.*?\]', text)
+            json_matches = re.findall(r'\[.*?]', text, re.DOTALL)
             if not json_matches:
                 return None, "No valid action found"
             
             json_str = json_matches[-1]  # Use the last match
-            action = tuple(json.loads(json_str))
+            action = json.loads(json_str)
+            action = (action[0], action[1], action[2])  # Convert to tuple
             explanation = text[:text.rfind(json_str)].strip()
             return action, explanation
         except Exception as e:
@@ -209,11 +240,10 @@ def main():
         st.session_state.current_inputs["numerator"] = numerator
         st.session_state.current_inputs["denominator"] = denominator
 
-        expected = current_state.solution_steps[current_state.step]["sai"]
         action = (
-            expected[0],  # element_id
-            expected[1],  # action_type
-            numerator if expected[0] == "numerator" else denominator
+            "solution",
+            "UpdateTextFields",
+            {"numerator": numerator, "denominator": denominator}
         )
 
         if st.session_state.tutor.evaluate_action(action):
@@ -221,9 +251,11 @@ def main():
             st.session_state.attempts = 0
             st.session_state.show_hint = False
             if st.session_state.tutor.is_complete():
-                st.success("🎉 Correct! Problem solved!")
-            else:
-                st.success("✅ Correct! Next step")
+                st.success("🎉 Correct! Generating new problem...")
+                st.session_state.tutor.reset_with_new_problem()
+                st.session_state.current_inputs = {"numerator": "", "denominator": ""}
+                st.session_state.tutor_explanation = ""
+                st.rerun()
         else:
             st.session_state.attempts += 1
             if st.session_state.attempts >= 2:
@@ -234,26 +266,17 @@ def main():
     if mode == "Tutor":
         if st.button("Show Tutor Solution"):
             action, explanation = st.session_state.agent.generate_action(current_state)
-            if action and action[0] in ["numerator", "denominator"]:
-                st.session_state.current_inputs[action[0]] = action[2]
+            if action and action[0] == "solution":
+                st.session_state.current_inputs["numerator"] = action[2]["numerator"]
+                st.session_state.current_inputs["denominator"] = action[2]["denominator"]
                 st.session_state.tutor_explanation = explanation
                 st.rerun()
 
         if st.session_state.tutor_explanation:
-            st.markdown("### Step Explanation")
+            st.markdown("### Solution Explanation")
             st.write(st.session_state.tutor_explanation)
-            st.markdown(f"**Current Step Answer:**")
+            st.markdown(f"**Answer:**")
             st.code(f"{st.session_state.current_inputs['numerator']}/{st.session_state.current_inputs['denominator']}")
-
-    # Progress tracking
-    st.markdown("---")
-    st.subheader("Progress")
-    if current_state.is_done():
-        st.write("Problem Complete!")
-        st.progress(1.0)
-    else:
-        st.write(f"Step {current_state.step + 1} of {len(current_state.solution_steps)}")
-        st.progress(current_state.step / len(current_state.solution_steps))
 
 if __name__ == "__main__":
     main()
