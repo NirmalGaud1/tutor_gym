@@ -53,7 +53,7 @@ class MathTutor:
         expected = self.solution_steps[self.state.step]["sai"]
         return (action[0] == expected[0] and 
                 action[1] == expected[1] and 
-                str(action[2]).strip() == str(expected[2]).strip()
+                str(action[2]).strip() == str(expected[2]).strip())
 
     def advance_step(self):
         self.current_step += 1
