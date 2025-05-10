@@ -118,6 +118,7 @@ def main():
         st.session_state.current_inputs = {"numerator": "", "denominator": ""}
         st.session_state.attempts = 0
         st.session_state.show_hint = False
+        st.session_state.step_advanced = False
 
     with st.sidebar:
         st.header("Settings")
@@ -135,6 +136,7 @@ def main():
             st.session_state.current_inputs = {"numerator": "", "denominator": ""}
             st.session_state.attempts = 0
             st.session_state.show_hint = False
+            st.session_state.step_advanced = False
 
     st.title("Fraction Addition Tutor")
     st.markdown(f"**Problem:** {st.session_state.tutor.problem}")
@@ -149,7 +151,7 @@ def main():
         if numerator and current_state.step == 0 and st.session_state.tutor.evaluate_action("numerator", "UpdateTextField", numerator):
             st.session_state.current_inputs["numerator"] = numerator
             st.session_state.tutor.advance_step()
-            st.experimental_rerun()
+            st.session_state.step_advanced = True
 
     with col2:
         denominator = st.text_input("Denominator",
@@ -158,7 +160,7 @@ def main():
         if denominator and current_state.step == 1 and st.session_state.tutor.evaluate_action("denominator", "UpdateTextField", denominator):
             st.session_state.current_inputs["denominator"] = denominator
             st.session_state.tutor.advance_step()
-            st.experimental_rerun()
+            st.session_state.step_advanced = True
 
     if st.button("Submit Answer"):
         if current_state.step == 2:
@@ -186,10 +188,10 @@ def main():
             st.session_state.current_inputs[action[0]] = action[2]
             if action[0] == "numerator" and current_state.step == 0:
                 st.session_state.tutor.advance_step()
-                st.experimental_rerun()
+                st.session_state.step_advanced = True
             elif action[0] == "denominator" and current_state.step == 1:
                 st.session_state.tutor.advance_step()
-                st.experimental_rerun()
+                st.session_state.step_advanced = True
 
     if st.session_state.show_hint:
         demo = st.session_state.tutor.get_demonstration()
@@ -201,6 +203,10 @@ def main():
     st.write(f"Current Step: {current_state.step + 1}/{len(current_state.solution_steps)}")
     progress = (current_state.step + 1) / len(current_state.solution_steps)
     st.progress(progress)
+
+    if st.session_state.step_advanced:
+        st.session_state.step_advanced = False
+        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
