@@ -12,14 +12,14 @@ class ProblemState:
     def __init__(self, problem: str, step: int, interface_elements: list, solution_steps: list):
         self.problem = problem
         self.step = step
-        self.interface_elements = interface_elements
+        self.interface_elements = interface_elements  # Correct attribute name
         self.solution_steps = solution_steps
 
     def to_json(self):
         return {
             "problem": self.problem,
             "current_step": self.step,
-            "interface": self.interface_elements,
+            "interface": self.interface_elements,  # JSON key remains 'interface'
             "completed": self.is_done()
         }
 
@@ -83,7 +83,7 @@ class GeminiTutor:
     def _build_prompt(self, state: ProblemState, mode: str):
         base = f"""Solve: {state.problem}
 Current Step: {state.step + 1}/{len(state.solution_steps)}
-Interface: {json.dumps(state.interface, indent=2)}"""
+Interface: {json.dumps(state.interface_elements, indent=2)}"""  # Fixed attribute name
         
         if mode == "tutor":
             base += "\nGenerate the CORRECT next action as JSON [element, action, value]:"
