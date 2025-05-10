@@ -91,7 +91,34 @@ class MathTutor:
         ]
         self._update_state()
 
-    # ... (keep other MathTutor methods the same) ...
+     def _update_state(self):
+        self.state = ProblemState(
+            self.problem,
+            self.current_step,
+            self.interface,
+            self.solution_steps
+        )
+
+    def get_state(self):
+        return self.state
+
+    def evaluate_action(self, action: tuple):
+        expected = self.solution_steps[self.state.step]["sai"]
+        return (action[0] == expected[0] and 
+                action[1] == expected[1] and 
+                str(action[2]).strip() == str(expected[2]).strip())
+
+    def advance_step(self):
+        self.current_step += 1
+        self._update_state()
+
+    def get_demonstration(self):
+        if self.state.step < len(self.solution_steps):
+            return self.solution_steps[self.state.step]["sai"]
+        return None
+
+    def is_complete(self):
+        return self.current_step >= len(self.solution_steps)
 
 class GeminiTutor:
     def __init__(self):
@@ -169,7 +196,33 @@ def main():
         denominator = st.text_input("Denominator", value=st.session_state.current_inputs["denominator"])
     
     if st.button("Submit Answer"):
-        # ... (keep existing submit logic the same) ...
+        st.session_state.current_inputs["numerator"] = numerator
+        st.session_state.current_inputs["denominator"] = denominator
+
+        # Determine expected action based on current step
+        sai_expected = current_state.solution_steps[current_state.step]["sai"]
+        if sai_expected[0] == "numerator":
+            action = ("numerator", "UpdateTextField", numerator)
+        elif sai_expected[0] == "denominator":
+            action = ("denominator", "UpdateTextField", denominator)
+        else:
+            action = ("submit", "PressButton", "")
+        
+        correct = st.session_state.tutor.evaluate_action(action)
+        
+        if correct:
+            st.session_state.tutor.advance_step()
+            st.session_state.attempts = 0
+            st.session_state.show_hint = False
+            if st.session_state.tutor.is_complete():
+                st.success("🎉 Correct! Problem solved!")
+            else:
+                st.success("✅ Correct! Move to next step")
+        else:
+            st.session_state.attempts += 1
+            if st.session_state.attempts >= 2:
+                st.session_state.show_hint = True
+            st.error("❌ Incorrect answer. Try again.")
 
     if mode == "Tutor" and st.button("Show Tutor Answer"):
         action, explanation = st.session_state.agent.generate_action(current_state, "tutor")
