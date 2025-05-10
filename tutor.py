@@ -73,7 +73,7 @@ def generate_problem():
         {"sai": ("numerator", "UpdateTextField", str(result.numerator)), 
          "description": explanation[0]},
         {"sai": ("denominator", "UpdateTextField", str(result.denominator)), 
-         "description": explanation[1] if len(explanation) >1 else "Enter denominator"},
+         "description": explanation[1] if len(explanation) > 1 else "Enter denominator"},
         {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
     ]
     
@@ -91,7 +91,7 @@ class MathTutor:
         ]
         self._update_state()
 
-     def _update_state(self):
+    def _update_state(self):
         self.state = ProblemState(
             self.problem,
             self.current_step,
@@ -143,12 +143,10 @@ Example response:
 First, find a common denominator by...
 Then, add the numerators...
 Finally, [\"denominator\", \"UpdateTextField\", \"6\"]"""
-        
         return base
 
     def _parse_response(self, text: str):
         try:
-            # Extract JSON part from response
             json_start = text.find('[')
             json_end = text.find(']') + 1
             json_str = text[json_start:json_end]
@@ -188,7 +186,6 @@ def main():
 
     current_state = st.session_state.tutor.get_state()
     
-    # Display interface
     col1, col2 = st.columns(2)
     with col1:
         numerator = st.text_input("Numerator", value=st.session_state.current_inputs["numerator"])
@@ -199,7 +196,6 @@ def main():
         st.session_state.current_inputs["numerator"] = numerator
         st.session_state.current_inputs["denominator"] = denominator
 
-        # Determine expected action based on current step
         sai_expected = current_state.solution_steps[current_state.step]["sai"]
         if sai_expected[0] == "numerator":
             action = ("numerator", "UpdateTextField", numerator)
@@ -235,8 +231,6 @@ def main():
         st.markdown("### Tutor's Explanation")
         st.write(st.session_state.tutor_explanation)
         st.write(f"**Correct Value:** {st.session_state.current_inputs['numerator']}/{st.session_state.current_inputs['denominator']}")
-
-    # ... (keep remaining elements the same) ...
 
 if __name__ == "__main__":
     main()
