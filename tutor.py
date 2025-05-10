@@ -12,14 +12,14 @@ class ProblemState:
     def __init__(self, problem: str, step: int, interface_elements: list, solution_steps: list):
         self.problem = problem
         self.step = step
-        self.interface_elements = interface_elements  # Correct attribute name
+        self.interface_elements = interface_elements
         self.solution_steps = solution_steps
 
     def to_json(self):
         return {
             "problem": self.problem,
             "current_step": self.step,
-            "interface": self.interface_elements,  # JSON key remains 'interface'
+            "interface": self.interface_elements,
             "completed": self.is_done()
         }
 
@@ -83,7 +83,7 @@ class GeminiTutor:
     def _build_prompt(self, state: ProblemState, mode: str):
         base = f"""Solve: {state.problem}
 Current Step: {state.step + 1}/{len(state.solution_steps)}
-Interface: {json.dumps(state.interface_elements, indent=2)}"""  # Fixed attribute name
+Interface: {json.dumps(state.interface_elements, indent=2)}"""
         
         if mode == "tutor":
             base += "\nGenerate the CORRECT next action as JSON [element, action, value]:"
@@ -99,7 +99,6 @@ Interface: {json.dumps(state.interface_elements, indent=2)}"""  # Fixed attribut
         except:
             return ("error", "parse_failed", text)
 
-# Streamlit App
 def main():
     st.set_page_config(page_title="Math Tutor", page_icon="🧮")
     
@@ -151,28 +150,40 @@ def main():
                                    key="den_input")
     
     if st.button("Submit Answer"):
-        action = ("submit", "PressButton", "")
-        correct = st.session_state.tutor.evaluate_action(action)
+        current_step = current_state.step
+        action = None
         
-        if correct:
-            st.session_state.tutor.advance_step()
-            st.session_state.attempts = 0
-            st.session_state.show_hint = False
-            if st.session_state.tutor.is_complete():
-                st.success("🎉 Correct! Problem solved!")
-            else:
-                st.success("✅ Correct! Move to next step")
+        # Determine expected action based on current step
+        if current_step == 0:
+            action = ("numerator", "UpdateTextField", numerator)
+        elif current_step == 1:
+            action = ("denominator", "UpdateTextField", denominator)
         else:
-            st.session_state.attempts += 1
-            if st.session_state.attempts >= 2:
-                st.session_state.show_hint = True
-            st.error("❌ Incorrect answer. Try again.")
+            action = ("submit", "PressButton", "")
+        
+        if action:
+            correct = st.session_state.tutor.evaluate_action(action)
+            
+            if correct:
+                st.session_state.tutor.advance_step()
+                st.session_state.attempts = 0
+                st.session_state.show_hint = False
+                # Clear inputs after successful step
+                if current_step in [0, 1]:
+                    st.session_state.current_inputs = {"numerator": "", "denominator": ""}
+                st.rerun()
+            else:
+                st.session_state.attempts += 1
+                if st.session_state.attempts >= 2:
+                    st.session_state.show_hint = True
+                st.error("❌ Incorrect answer. Try again.")
 
     if mode == "Tutor" and st.button("Show Tutor Answer"):
         action = st.session_state.agent.generate_action(current_state, "tutor")
-        if action:
+        if action and action[0] != "error":
             st.write(f"**Tutor's Answer:** {action[2]}")
             st.session_state.current_inputs[action[0]] = action[2]
+            st.rerun()
     
     if st.session_state.show_hint:
         demo = st.session_state.tutor.get_demonstration()
