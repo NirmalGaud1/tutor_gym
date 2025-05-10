@@ -195,7 +195,7 @@ def main():
             st.rerun()
 
     st.title("Fraction Calculator Tutor")
-    current государ: ProblemState = st.session_state.tutor.get_state()
+    current_state: ProblemState = st.session_state.tutor.get_state()
     st.markdown(f"**Problem:** {current_state.problem}")
 
     # Input fields
