@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import random
+import re
 from fractions import Fraction
 
 # Configure Google Gemini API
@@ -28,7 +29,7 @@ class ProblemState:
         return self.step >= len(self.solution_steps)
 
 def generate_problem():
-    """Generates a random fraction problem and its solution steps with explanations"""
+    """Generates a random fraction problem with correct solution steps"""
     a = random.randint(1, 5)
     b = random.randint(1, 5)
     c = random.randint(1, 5)
@@ -46,6 +47,11 @@ def generate_problem():
             f"{c}/{d} = {c*(result.denominator//d)}/{result.denominator}",
             f"Add numerators: {a*(result.denominator//b)} + {c*(result.denominator//d)} = {result.numerator}"
         ]
+        solution_steps = [
+            {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": explanation[0]},
+            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[2]},
+            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+        ]
     elif op == "-":
         result = frac1 - frac2
         explanation = [
@@ -54,29 +60,35 @@ def generate_problem():
             f"{c}/{d} = {c*(result.denominator//d)}/{result.denominator}",
             f"Subtract numerators: {a*(result.denominator//b)} - {c*(result.denominator//d)} = {result.numerator}"
         ]
+        solution_steps = [
+            {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": explanation[0]},
+            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[2]},
+            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+        ]
     elif op == "*":
         result = frac1 * frac2
         explanation = [
             f"Multiply numerators: {a} × {c} = {result.numerator}",
             f"Multiply denominators: {b} × {d} = {result.denominator}"
         ]
+        solution_steps = [
+            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[0]},
+            {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": explanation[1]},
+            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
+        ]
     else:  # division
         result = frac1 / frac2
         explanation = [
             f"Reciprocal of second fraction: {c}/{d} becomes {d}/{c}",
-            f"Multiply fractions: {a}/{b} × {d}/{c} = {result.numerator}/{result.denominator}"
+            f"Multiply fractions: ({a}/{b}) × ({d}/{c}) = {result.numerator}/{result.denominator}"
+        ]
+        solution_steps = [
+            {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": explanation[1]},
+            {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": "Enter denominator"},
+            {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
         ]
     
     problem_str = f"{a}/{b} {op} {c}/{d}"
-    
-    solution_steps = [
-        {"sai": ("numerator", "UpdateTextField", str(result.numerator)), 
-         "description": explanation[0]},
-        {"sai": ("denominator", "UpdateTextField", str(result.denominator)), 
-         "description": explanation[1] if len(explanation) > 1 else "Enter denominator"},
-        {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
-    ]
-    
     return problem_str, solution_steps, explanation
 
 class MathTutor:
@@ -124,38 +136,40 @@ class GeminiTutor:
     def __init__(self):
         self.experience_buffer = []
     
-    def generate_action(self, state: ProblemState, mode: str):
-        prompt = self._build_prompt(state, mode)
+    def generate_action(self, state: ProblemState):
+        prompt = self._build_prompt(state)
         try:
             response = gemini_model.generate_content(prompt)
             return self._parse_response(response.text)
         except Exception as e:
             st.error(f"API Error: {str(e)}")
-            return None, None
+            return None, "Error generating response"
 
-    def _build_prompt(self, state: ProblemState, mode: str):
-        base = f"""Solve: {state.problem}
-Current Step: {state.step + 1}/{len(state.solution_steps)}
-Interface: {json.dumps(state.interface_elements, indent=2)}
+    def _build_prompt(self, state: ProblemState):
+        current_step = state.solution_steps[state.step]
+        return f"""Solve: {state.problem}
+Current Step: {state.step + 1} of {len(state.solution_steps)} ({current_step['description']})
         
-Please explain the step-by-step process to solve this problem. Then provide the action in JSON format.
-Example response:
-First, find a common denominator by...
-Then, add the numerators...
-Finally, [\"denominator\", \"UpdateTextField\", \"6\"]"""
-        return base
+Explain the current step in detail, then provide the exact action in JSON format.
+Required format: [element_id, action_type, value]
+
+Example for denominator step:
+1. Find the least common denominator...
+2. The correct denominator is 6
+["denominator", "UpdateTextField", "6"]"""
 
     def _parse_response(self, text: str):
         try:
-            json_start = text.find('[')
-            json_end = text.find(']') + 1
-            json_str = text[json_start:json_end]
+            json_match = re.search(r'\[.*?\]', text)
+            if not json_match:
+                return None, "No valid action found"
             
-            explanation = text[:json_start].strip()
+            json_str = json_match.group()
             action = tuple(json.loads(json_str))
+            explanation = text[:json_match.start()].strip()
             return action, explanation
         except Exception as e:
-            return ("error", "parse_failed", str(e)), "Failed to parse response"
+            return None, f"Parse error: {str(e)}"
 
 def main():
     st.set_page_config(page_title="Math Tutor", page_icon="🧮")
@@ -172,65 +186,71 @@ def main():
     with st.sidebar:
         st.header("Settings")
         mode = st.selectbox("Mode", ["Student", "Tutor"])
-        st.write("---")
-        if st.button("Reset Problem"):
+        if st.button("New Problem"):
             problem, steps, _ = generate_problem()
             st.session_state.tutor = MathTutor(problem, steps)
             st.session_state.current_inputs = {"numerator": "", "denominator": ""}
             st.session_state.attempts = 0
             st.session_state.show_hint = False
             st.session_state.tutor_explanation = ""
+            st.rerun()
 
-    st.title("Fraction Arithmetic Tutor")
-    st.markdown(f"**Problem:** {st.session_state.tutor.problem}")
-
+    st.title("Fraction Calculator Tutor")
     current_state = st.session_state.tutor.get_state()
-    
+    st.markdown(f"**Problem:** {current_state.problem}")
+
+    # Input fields
     col1, col2 = st.columns(2)
     with col1:
-        numerator = st.text_input("Numerator", value=st.session_state.current_inputs["numerator"])
+        numerator = st.text_input("Numerator", value=st.session_state.current_inputs["numerator"], key="num")
     with col2:
-        denominator = st.text_input("Denominator", value=st.session_state.current_inputs["denominator"])
-    
-    if st.button("Submit Answer"):
+        denominator = st.text_input("Denominator", value=st.session_state.current_inputs["denominator"], key="den")
+
+    if st.button("Submit"):
         st.session_state.current_inputs["numerator"] = numerator
         st.session_state.current_inputs["denominator"] = denominator
 
-        sai_expected = current_state.solution_steps[current_state.step]["sai"]
-        if sai_expected[0] == "numerator":
-            action = ("numerator", "UpdateTextField", numerator)
-        elif sai_expected[0] == "denominator":
-            action = ("denominator", "UpdateTextField", denominator)
-        else:
-            action = ("submit", "PressButton", "")
-        
-        correct = st.session_state.tutor.evaluate_action(action)
-        
-        if correct:
+        expected = current_state.solution_steps[current_state.step]["sai"]
+        action = (
+            expected[0],  # element_id
+            expected[1],  # action_type
+            numerator if expected[0] == "numerator" else denominator
+        )
+
+        if st.session_state.tutor.evaluate_action(action):
             st.session_state.tutor.advance_step()
             st.session_state.attempts = 0
             st.session_state.show_hint = False
             if st.session_state.tutor.is_complete():
                 st.success("🎉 Correct! Problem solved!")
             else:
-                st.success("✅ Correct! Move to next step")
+                st.success("✅ Correct! Next step")
         else:
             st.session_state.attempts += 1
             if st.session_state.attempts >= 2:
                 st.session_state.show_hint = True
-            st.error("❌ Incorrect answer. Try again.")
+            st.error("❌ Incorrect. Try again.")
 
-    if mode == "Tutor" and st.button("Show Tutor Answer"):
-        action, explanation = st.session_state.agent.generate_action(current_state, "tutor")
-        if action and action[0] in st.session_state.current_inputs:
-            st.session_state.tutor_explanation = explanation
-            st.session_state.current_inputs[action[0]] = action[2]
-            st.experimental_rerun()
-    
-    if st.session_state.tutor_explanation:
-        st.markdown("### Tutor's Explanation")
-        st.write(st.session_state.tutor_explanation)
-        st.write(f"**Correct Value:** {st.session_state.current_inputs['numerator']}/{st.session_state.current_inputs['denominator']}")
+    # Tutor answer section
+    if mode == "Tutor":
+        if st.button("Show Tutor Solution"):
+            action, explanation = st.session_state.agent.generate_action(current_state)
+            if action and action[0] in ["numerator", "denominator"]:
+                st.session_state.current_inputs[action[0]] = action[2]
+                st.session_state.tutor_explanation = explanation
+                st.rerun()
+
+        if st.session_state.tutor_explanation:
+            st.markdown("### Step Explanation")
+            st.write(st.session_state.tutor_explanation)
+            st.markdown(f"**Current Step Answer:**")
+            st.code(f"{st.session_state.current_inputs['numerator']}/{st.session_state.current_inputs['denominator']}")
+
+    # Progress tracking
+    st.markdown("---")
+    st.subheader("Progress")
+    st.write(f"Step {current_state.step + 1} of {len(current_state.solution_steps)}")
+    st.progress((current_state.step + 1) / len(current_state.solution_steps))
 
 if __name__ == "__main__":
     main()
