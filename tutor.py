@@ -1,6 +1,8 @@
 import streamlit as st
 import google.generativeai as genai
 import json
+import random
+from fractions import Fraction
 
 # Configure Google Gemini API
 API_KEY = "AIzaSyA-9-lTQTWdNM43YdOXMQwGKDy0SrMwo6c"  # Replace with your valid API key
@@ -12,7 +14,7 @@ class ProblemState:
         self.problem = problem
         self.step = step
         self.interface_elements = interface_elements
-        self.solution_steps = solution_steps  # ✅ Added to fix access in _build_prompt
+        self.solution_steps = solution_steps
 
     def to_json(self):
         return {
@@ -24,6 +26,36 @@ class ProblemState:
 
     def is_done(self):
         return self.step >= len(self.solution_steps)
+
+def generate_problem():
+    """Generates a random fraction problem and its solution steps"""
+    a = random.randint(1, 5)
+    b = random.randint(1, 5)
+    c = random.randint(1, 5)
+    d = random.randint(1, 5)
+    op = random.choice(["+", "-", "*", "/"])
+    
+    frac1 = Fraction(a, b)
+    frac2 = Fraction(c, d)
+    
+    if op == "+":
+        result = frac1 + frac2
+    elif op == "-":
+        result = frac1 - frac2
+    elif op == "*":
+        result = frac1 * frac2
+    else:  # division
+        result = frac1 / frac2
+    
+    problem_str = f"{a}/{b} {op} {c}/{d}"
+    
+    solution_steps = [
+        {"sai": ("numerator", "UpdateTextField", str(result.numerator)), "description": "Enter the numerator"},
+        {"sai": ("denominator", "UpdateTextField", str(result.denominator)), "description": "Enter the denominator"},
+        {"sai": ("submit", "PressButton", ""), "description": "Submit answer"}
+    ]
+    
+    return problem_str, solution_steps
 
 class MathTutor:
     def __init__(self, problem: str, solution_steps: list):
@@ -98,19 +130,12 @@ Interface: {json.dumps(state.interface_elements, indent=2)}"""
         except Exception as e:
             return ("error", "parse_failed", str(e))
 
-# Streamlit App
 def main():
     st.set_page_config(page_title="Math Tutor", page_icon="🧮")
     
     if 'tutor' not in st.session_state:
-        st.session_state.tutor = MathTutor(
-            "1/2 + 1/3",
-            [
-                {"sai": ("numerator", "UpdateTextField", "5"), "description": "Add numerators"},
-                {"sai": ("denominator", "UpdateTextField", "6"), "description": "Common denominator"},
-                {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
-            ]
-        )
+        problem, steps = generate_problem()
+        st.session_state.tutor = MathTutor(problem, steps)
         st.session_state.agent = GeminiTutor()
         st.session_state.current_inputs = {"numerator": "", "denominator": ""}
         st.session_state.attempts = 0
@@ -121,19 +146,13 @@ def main():
         mode = st.selectbox("Mode", ["Student", "Tutor"])
         st.write("---")
         if st.button("Reset Problem"):
-            st.session_state.tutor = MathTutor(
-                "1/2 + 1/3",
-                [
-                    {"sai": ("numerator", "UpdateTextField", "5"), "description": "Add numerators"},
-                    {"sai": ("denominator", "UpdateTextField", "6"), "description": "Common denominator"},
-                    {"sai": ("submit", "PressButton", ""), "description": "Submit solution"}
-                ]
-            )
+            problem, steps = generate_problem()
+            st.session_state.tutor = MathTutor(problem, steps)
             st.session_state.current_inputs = {"numerator": "", "denominator": ""}
             st.session_state.attempts = 0
             st.session_state.show_hint = False
 
-    st.title("Fraction Addition Tutor")
+    st.title("Fraction Arithmetic Tutor")
     st.markdown(f"**Problem:** {st.session_state.tutor.problem}")
 
     current_state = st.session_state.tutor.get_state()
@@ -149,7 +168,7 @@ def main():
         st.session_state.current_inputs["numerator"] = numerator
         st.session_state.current_inputs["denominator"] = denominator
 
-        # Check both inputs and then button press
+        # Determine expected action based on current step
         sai_expected = current_state.solution_steps[current_state.step]["sai"]
         if sai_expected[0] == "numerator":
             action = ("numerator", "UpdateTextField", numerator)
